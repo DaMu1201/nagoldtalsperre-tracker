@@ -1,0 +1,31 @@
+name: 🎣 Nagoldtalsperre Tracker
+
+on:
+  # Alle 15 Minuten prüfen
+  schedule:
+    - cron: "*/15 * * * *"
+  
+  # Manuell auslösbar (zum Testen)
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python Setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: 🎣 Check Nagoldtalsperre
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python check_availability.py
