@@ -1,4 +1,4 @@
-name: 🎣 Nagoldtalsperre Tracker
+name: Nagoldtalsperre Tracker
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: 🎣 Check Nagoldtalsperre
+      - name: Check Nagoldtalsperre
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
