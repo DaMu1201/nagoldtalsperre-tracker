@@ -143,6 +143,9 @@ def main():
         print(f"🎉 {free} Platz/Plätze frei!")
     else:
         print(f"😴 Noch voll belegt ({current}/{maximum}). Nächster Check in 15 Min.")
+        send_telegram(
+            f"✅ <b>Tracker funktioniert!</b>\n\nHauptsperre: <b>{current}/{maximum}</b> belegt.\nDu wirst benachrichtigt, sobald ein Platz frei wird."
+        )
 
     # Immer mit Exit-Code 0, damit GitHub Actions nicht fehlschlägt
     sys.exit(0)
