@@ -149,7 +149,6 @@ def main():
             msg = (
                 f"✅ <b>Tracker läuft</b>\n\n"
                 f"Hauptsperre: <b>{sold}/{maximum}</b> belegt.\n"
-                f"~24 Checks in den letzten 6h.\n"
                 f"Du wirst sofort benachrichtigt, sobald ein Platz frei wird."
             )
             send_telegram(msg)
