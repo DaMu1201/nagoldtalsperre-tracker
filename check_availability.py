@@ -142,13 +142,17 @@ def main():
         send_telegram(msg)
         print(f"🎉 {free} Platz/Plätze frei!")
     else:
-        # Noch belegt – Status-Update senden
-        msg = (
-            f"😴 <b>Nagoldtalsperre Hauptsperre</b>\n\n"
-            f"Noch voll belegt: <b>{sold}/{maximum}</b>\n"
-            f"Nächster Check in 15 Min."
-        )
-        send_telegram(msg)
+        # Alle 6 Stunden eine Status-Nachricht senden (UTC 0, 6, 12, 18 Uhr)
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        if now.hour % 6 == 0 and now.minute < 15:
+            msg = (
+                f"✅ <b>Tracker läuft</b>\n\n"
+                f"Hauptsperre: <b>{sold}/{maximum}</b> belegt.\n"
+                f"~24 Checks in den letzten 6h.\n"
+                f"Du wirst sofort benachrichtigt, sobald ein Platz frei wird."
+            )
+            send_telegram(msg)
         print(f"😴 Noch voll belegt ({sold}/{maximum}).")
 
     sys.exit(0)
