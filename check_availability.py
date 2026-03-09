@@ -2,9 +2,9 @@
 """
 Nagoldtalsperre Hauptsperre – Verfügbarkeits-Tracker
 =====================================================
-Prüft alle 15 Minuten, ob auf der ForstBW-Webshop-Seite ein Platz
-für die Hauptsperre frei geworden ist, und schickt dir eine
-Telegram-Nachricht, sobald das der Fall ist.
+Prüft regelmäßig, ob auf der ForstBW-Webshop-Seite ein Platz
+für die Hauptsperre frei geworden ist, und schickt eine
+Telegram-Nachricht bei jedem Check.
 """
 
 import os
@@ -16,11 +16,8 @@ import requests
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-# URL der Antragstellungs-Seite
+# URL der Seite
 URL = "https://webshop.forstbw.de/Angeln/Angeln-an-der-Nagoldtalsperre/"
-
-# Maximale Plätze Hauptsperre
-MAX_SLOTS = 100
 
 
 def fetch_page() -> str:
@@ -39,45 +36,36 @@ def fetch_page() -> str:
 
 def parse_hauptsperre_slots(html: str) -> tuple[int, int] | None:
     """
-    Versucht aus dem HTML die aktuelle/maximale Platzzahl
-    für die Hauptsperre zu extrahieren.
+    Liest maxAnzahlData (max. Plätze) und anzahlVerkauftData (verkauft)
+    für die Hauptsperre aus dem HTML.
 
-    Die Seite zeigt die Daten in einem Kartenformat:
-        Hauptsperre
-        [01.03.
-        <aktuell>
-        <max>
-        Jahreskarte
-        140,00€
+    HTML-Struktur auf der Seite:
+        <a ... onclick="setSessionStoragePrice('...', 'Fischereischein - Hauptsperre')">
+            ...
+            <div class="maxAnzahlData" style="display: none;">100</div>
+            <div class="anzahlVerkauftData" style="display: none;">100</div>
+            ...
+        </a>
 
-    Wir suchen nach dem Muster rund um 'Hauptsperre'.
+    Gibt zurück: (verkauft, maximum) oder None bei Fehler.
     """
-    # Strategie 1: Suche nach dem Pattern im HTML-Text
-    # Die Zahlen stehen typischerweise als separate Elemente
-    # in der Nähe von "Hauptsperre"
-    
-    # Normalisiere HTML – entferne Tags für leichteres Parsen
-    text = re.sub(r"<[^>]+>", "\n", html)
-    text = re.sub(r"\s+", " ", text)
-    
-    # Suche nach "Hauptsperre" gefolgt von zwei Zahlen
-    pattern = r"Hauptsperre.*?(\d{1,3})\s+(\d{1,3})\s+Jahreskarte"
-    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-    
-    if match:
-        current = int(match.group(1))
-        maximum = int(match.group(2))
-        return current, maximum
+    # Strategie 1: Suche gezielt den Hauptsperre-Block
+    block_match = re.search(
+        r"Fischereischein\s*-\s*Hauptsperre.*?maxAnzahlData.*?>(\d+)<.*?anzahlVerkauftData.*?>(\d+)<",
+        html, re.DOTALL | re.IGNORECASE
+    )
+    if block_match:
+        maximum = int(block_match.group(1))
+        sold = int(block_match.group(2))
+        return sold, maximum
 
-    # Strategie 2: Suche einfach nach zwei aufeinanderfolgenden
-    # Zahlen die typisch für "belegt/max" sind
-    pattern2 = r"Hauptsperre.*?(\d{1,3})[^\d]+(\d{1,3})"
-    match2 = re.search(pattern2, text, re.DOTALL | re.IGNORECASE)
-    
-    if match2:
-        current = int(match2.group(1))
-        maximum = int(match2.group(2))
-        return current, maximum
+    # Strategie 2: Fallback – erste Instanz der CSS-Klassen
+    max_match = re.search(r'class="maxAnzahlData"[^>]*>(\d+)<', html)
+    sold_match = re.search(r'class="anzahlVerkauftData"[^>]*>(\d+)<', html)
+    if max_match and sold_match:
+        maximum = int(max_match.group(1))
+        sold = int(sold_match.group(1))
+        return sold, maximum
 
     return None
 
@@ -96,45 +84,57 @@ def send_telegram(message: str) -> bool:
         "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
-    resp = requests.post(url, json=payload, timeout=15)
-    if resp.status_code == 200:
-        print("✅ Telegram-Nachricht gesendet!")
-        return True
-    else:
-        print(f"❌ Telegram-Fehler: {resp.status_code} – {resp.text}")
+    try:
+        resp = requests.post(url, json=payload, timeout=15)
+        if resp.status_code == 200:
+            print("✅ Telegram-Nachricht gesendet!")
+            return True
+        else:
+            print(f"❌ Telegram-Fehler: {resp.status_code} – {resp.text}")
+            return False
+    except requests.RequestException as e:
+        print(f"❌ Telegram-Verbindungsfehler: {e}")
         return False
 
 
 def main():
-    print(f"🎣 Prüfe Nagoldtalsperre Hauptsperre...")
+    print("🎣 Prüfe Nagoldtalsperre Hauptsperre...")
     print(f"   URL: {URL}")
 
+    # Seite abrufen
     try:
         html = fetch_page()
     except requests.RequestException as e:
         print(f"❌ Fehler beim Abruf der Seite: {e}")
+        send_telegram(
+            "⚠️ <b>Nagoldtalsperre Tracker</b>\n\n"
+            f"Fehler beim Abruf der Seite:\n{e}\n\n"
+            f"Bitte manuell prüfen: {URL}"
+        )
         sys.exit(1)
 
+    # Plätze auslesen
     slots = parse_hauptsperre_slots(html)
 
     if slots is None:
         msg = (
-            "⚠️ Konnte die Platzzahl nicht auslesen.\n"
+            "Konnte die Platzzahl nicht auslesen.\n"
             "Möglicherweise hat sich die Seitenstruktur geändert.\n"
-            "Bitte manuell prüfen: " + URL
+            f"Bitte manuell prüfen: {URL}"
         )
-        print(msg)
+        print(f"⚠️ {msg}")
         send_telegram(f"⚠️ <b>Nagoldtalsperre Tracker</b>\n\n{msg}")
         sys.exit(1)
 
-    current, maximum = slots
-    print(f"   Belegte Plätze: {current}/{maximum}")
+    sold, maximum = slots
+    free = maximum - sold
+    print(f"   Verkauft: {sold} / Max: {maximum} → Frei: {free}")
 
-    if current < maximum:
-        free = maximum - current
+    if sold < maximum:
+        # PLATZ FREI!
         msg = (
             f"🎣🎉 <b>PLATZ FREI an der Nagoldtalsperre Hauptsperre!</b>\n\n"
-            f"Aktuell: <b>{current}/{maximum}</b> belegt → "
+            f"Verkauft: <b>{sold}/{maximum}</b> → "
             f"<b>{free} Platz/Plätze frei!</b>\n\n"
             f"👉 Jetzt schnell Antrag stellen:\n"
             f"{URL}"
@@ -142,12 +142,15 @@ def main():
         send_telegram(msg)
         print(f"🎉 {free} Platz/Plätze frei!")
     else:
-        print(f"😴 Noch voll belegt ({current}/{maximum}). Nächster Check in 15 Min.")
-        send_telegram(
-            f"✅ <b>Tracker funktioniert!</b>\n\nHauptsperre: <b>{current}/{maximum}</b> belegt.\nDu wirst benachrichtigt, sobald ein Platz frei wird."
+        # Noch belegt – Status-Update senden
+        msg = (
+            f"😴 <b>Nagoldtalsperre Hauptsperre</b>\n\n"
+            f"Noch voll belegt: <b>{sold}/{maximum}</b>\n"
+            f"Nächster Check in 15 Min."
         )
+        send_telegram(msg)
+        print(f"😴 Noch voll belegt ({sold}/{maximum}).")
 
-    # Immer mit Exit-Code 0, damit GitHub Actions nicht fehlschlägt
     sys.exit(0)
 
 
